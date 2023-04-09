@@ -4,32 +4,43 @@
 #include <sys/wait.h> /* wait */
 #include <string.h>
 
+#include "readcmd.h"
+
+void executer_cd(struct cmdline* cmd) {
+    int res;
+    if (cmd->seq[0][1] != NULL) {
+        res = chdir(cmd->seq[0][1]);
+    } else {
+        res = chdir(getenv("HOME"));
+    }
+
+    if (res == 0) {
+        printf("SUCCESS\n");
+    } else {
+        printf("ECHEC\n");
+    }
+}
+
 int main(void) {
 
     char buf[30];
-    char exite[30];
-    strcpy(exite, "exit");
 
     do {
         printf(">>>");
-        if (fgets(buf, sizeof(buf), stdin) == NULL) {
-            break;
-        }
-        buf[strcspn(buf, "\n")] = '\0'; // Supprimer le caractère de fin de ligne
-        
-        if (strcmp(buf, "") == 0) {
-            continue; // Appuie simple sur return
-        } else if (strcmp(buf, exite) == 0) {
-            break; // Quitter le shell
-        } else if (strcmp(buf, "cd\0") == 0)
-        {
-            int res = chdir(getenv("HOME"));
-            if (res == 0) {
-                printf("SUCCESS\n");
-            } else {
-                printf("ECHEC\n");
-            }
+
+        struct cmdline* cmd = readcmd();
+
+        // Commandes internes ?
+        if (cmd->seq[0] == NULL) {
             continue;
+        } else if ( strcmp(cmd->seq[0][0], "exit") == 0 ) {
+            break;
+        } else if ( strcmp(cmd->seq[0][0], "cd") == 0) {
+            executer_cd(cmd);
+            continue;
+        } else {
+            // Commande externe ...
+            strcpy(buf, cmd->seq[0][0]);
         }
         
         int pid = fork();
@@ -42,12 +53,17 @@ int main(void) {
             execlp(buf, buf , NULL);
             return EXIT_FAILURE; // Si on execute ici c'est que l'exec a echoué
         } else {
-            wait(&codeTerm);
-            if (WEXITSTATUS(codeTerm) == 0){
-                printf("SUCCESS\n");
+            if (cmd->backgrounded) {
+                printf("Lancement en tâche de fond !\n");
             } else {
-                printf("ECHEC\n");
+                wait(&codeTerm);
+                if (WEXITSTATUS(codeTerm) == 0){
+                    printf("SUCCESS\n");
+                } else {
+                    printf("ECHEC\n");
+                }
             }
+            
         }
         
     } while (1);
