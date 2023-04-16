@@ -1,12 +1,12 @@
-#include <stdio.h> /* printf */
+#include <stdio.h>  /* printf */
 #include <unistd.h> /* fork, exec */
 #include <stdlib.h> /* exit */
 #include <signal.h> /* signals */
-#include <sys/types.h> 
+#include <sys/types.h>
 #include <sys/wait.h> /* wait */
-#include <string.h> /* strcmp */
-#include <stdbool.h> /* bool */
-#include <assert.h> /* assert */
+#include <string.h>   /* strcmp */
+#include <stdbool.h>  /* bool */
+#include <assert.h>   /* assert */
 
 #include "readcmd.h"
 
@@ -32,9 +32,9 @@ bool is_internal_cmd(struct cmdline *cmd);
 void executer_internal_cmd(struct cmdline *cmd);
 void executer_exit();
 void executer_lj();
-void executer_sj(struct cmdline* cmd);
-void executer_bg(struct cmdline* cmd);
-void executer_fg(struct cmdline* cmd);
+void executer_sj(struct cmdline *cmd);
+void executer_bg(struct cmdline *cmd);
+void executer_fg(struct cmdline *cmd);
 void executer_cd(struct cmdline *cmd);
 void add_job(int pid, struct cmdline *cmd);
 void del_job(int pid);
@@ -42,7 +42,7 @@ void check_jobs();
 void handler_chld(int sig);
 
 int main(void)
-{   
+{
     struct sigaction sa;
     sa.sa_handler = handler_chld;
     sigemptyset(&sa.sa_mask);
@@ -55,14 +55,13 @@ int main(void)
 
         struct cmdline *cmd = readcmd();
 
-        
         if (cmd == NULL)
         {
-            continue;// Si le handler a été appelé et a supprimé un job
+            cmd = readcmd(); // Si le handler a été appelé et a supprimé un job
         }
-        else if (cmd->seq[0] == NULL)
+        if (cmd->seq[0] == NULL)
         {
-            continue;// Si la commande est vide
+            continue; // Si la commande est vide
         }
         else if (is_internal_cmd(cmd))
         {
@@ -160,7 +159,7 @@ void executer_lj()
     }
 }
 
-void executer_sj(struct cmdline* cmd)
+void executer_sj(struct cmdline *cmd)
 {
     if (cmd->seq[0][1] != NULL)
     {
@@ -183,10 +182,10 @@ void executer_sj(struct cmdline* cmd)
     else
     {
         printf("Usage: sj <id>\n");
-    }   
+    }
 }
 
-void executer_bg(struct cmdline* cmd)
+void executer_bg(struct cmdline *cmd)
 {
     if (cmd->seq[0][1] != NULL)
     {
@@ -199,7 +198,8 @@ void executer_bg(struct cmdline* cmd)
                 if (jobs[i].status == ACTIF)
                 {
                     printf("Le processus %d est déjà actif\n", id);
-                } else
+                }
+                else
                 {
                     jobs[i].status = ACTIF;
                     kill(jobs[i].pid, SIGCONT);
@@ -215,10 +215,10 @@ void executer_bg(struct cmdline* cmd)
     else
     {
         printf("Usage: bg <id>\n");
-    }   
+    }
 }
 
-void executer_fg(struct cmdline* cmd)
+void executer_fg(struct cmdline *cmd)
 {
     if (cmd->seq[0][1] != NULL)
     {
@@ -231,7 +231,8 @@ void executer_fg(struct cmdline* cmd)
                 if (jobs[i].status == ACTIF)
                 {
                     printf("Le processus %d est déjà actif\n", id);
-                } else
+                }
+                else
                 {
                     jobs[i].status = ACTIF;
                     kill(jobs[i].pid, SIGCONT);
@@ -240,10 +241,12 @@ void executer_fg(struct cmdline* cmd)
                     if (WEXITSTATUS(codeTerm) == 0)
                     {
                         printf("SUCCESS\n");
-                    } else {
+                    }
+                    else
+                    {
                         printf("ECHEC\n");
                     }
-                    
+
                     del_job(jobs[i].pid);
                     trouve = true;
                 }
@@ -323,7 +326,7 @@ void del_job(int pid)
         for (int i = 0; i < nb_jobs; i++)
         {
             if (jobs[i].pid == pid)
-            {   
+            {
                 free(jobs[i].cmd);
                 jobs[i] = jobs[nb_jobs - 1];
                 jobs = realloc(jobs, sizeof(struct Job) * (nb_jobs - 1));
@@ -342,12 +345,14 @@ void del_job(int pid)
     }
 }
 
-void handler_chld(int sig) {
+void handler_chld(int sig)
+{
     assert(sig == SIGCHLD);
     check_jobs();
 }
 
-void check_jobs() {
+void check_jobs()
+{
     int i = 0;
     while (i < nb_jobs)
     {
@@ -355,8 +360,8 @@ void check_jobs() {
         pid_t result = waitpid(jobs[i].pid, &status, WNOHANG);
         if (result == -1)
         {
-            printf("Erreur waitpid\n");
-            exit(1);
+            // Erreur
+            i++;
         }
         else if (result == 0)
         {
