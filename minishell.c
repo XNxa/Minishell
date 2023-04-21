@@ -1,3 +1,6 @@
+#define _POSIX_SOURCE
+#define _DEFAULT_SOURCE
+
 #include <stdio.h>  /* printf */
 #include <unistd.h> /* fork, exec */
 #include <stdlib.h> /* exit */
@@ -9,24 +12,7 @@
 #include <assert.h>   /* assert */
 
 #include "readcmd.h"
-
-enum Status
-{
-    ACTIF,
-    SUSPENDU,
-    TERMINE
-};
-
-struct Job
-{
-    int id;
-    int pid;
-    enum Status status;
-    char *cmd;
-};
-
-int nb_jobs = 0;
-struct Job *jobs = NULL;
+#include "job_manager.h"
 
 bool is_internal_cmd(struct cmdline *cmd);
 void executer_internal_cmd(struct cmdline *cmd);
@@ -36,13 +22,16 @@ void executer_sj(struct cmdline *cmd);
 void executer_bg(struct cmdline *cmd);
 void executer_fg(struct cmdline *cmd);
 void executer_cd(struct cmdline *cmd);
-void add_job(int pid, struct cmdline *cmd);
-void del_job(int pid);
-void check_jobs();
 void handler_chld(int sig);
+
+extern int nb_jobs;
+extern struct Job *jobs;
+
 
 int main(void)
 {
+    struct cmdline *cmd = NULL;
+
     struct sigaction sa;
     sa.sa_handler = handler_chld;
     sigemptyset(&sa.sa_mask);
@@ -50,56 +39,50 @@ int main(void)
     sigaction(SIGCHLD, &sa, NULL);
 
     do
-    {
+    {   
         printf(">>>");
-
-        struct cmdline *cmd = readcmd();
-
-        if (cmd == NULL)
+        cmd = readcmd();
+        if (cmd != NULL)
         {
-            cmd = readcmd(); // Si le handler a été appelé et a supprimé un job
-        }
-        if (cmd->seq[0] == NULL)
-        {
-            continue; // Si la commande est vide
-        }
-        else if (is_internal_cmd(cmd))
-        {
-            executer_internal_cmd(cmd);
-            continue;
-        }
-
-        int pid = fork();
-        int codeTerm;
-
-        if (pid == -1)
-        {
-            printf("Erreur fork\n");
-            exit(1);
-        }
-        else if (pid == 0)
-        {
-            execlp(cmd->seq[0][0], cmd->seq[0][0], NULL);
-            return EXIT_FAILURE; // Si on execute ici c'est que l'exec a echoué
-        }
-        else
-        {
-            add_job(pid, cmd);
-            if (cmd->backgrounded)
+        
+            if (cmd->seq[0] == NULL)
             {
-                printf("Lancement en tâche de fond !\n");
+                continue; // Si la commande est vide
+            }
+            else if (is_internal_cmd(cmd))
+            {
+                executer_internal_cmd(cmd);
+                continue;
+            }
+            
+
+            int pid = fork();
+            int codeTerm;
+
+            if (pid == -1)
+            {
+                printf("Erreur fork\n");
+                exit(1);
+            }
+            else if (pid == 0)
+            {
+                execlp(cmd->seq[0][0], cmd->seq[0][0], NULL);
+                return EXIT_FAILURE; // Si on execute ici c'est que l'exec a echoué
             }
             else
             {
-                waitpid(pid, &codeTerm, 0);
-                del_job(pid);
-                if (WEXITSTATUS(codeTerm) == 0)
+                add_job(pid, cmd->seq[0][0]);
+                if (cmd->backgrounded)
                 {
-                    printf("SUCCESS\n");
+                    printf("Lancement en tâche de fond !\n");
                 }
                 else
                 {
-                    printf("ECHEC\n");
+                    waitpid(pid, &codeTerm, 0);
+                    del_job(pid);
+                    if (WEXITSTATUS(codeTerm) != 0) {
+                        printf("ECHEC\n");
+                    }
                 }
             }
         }
@@ -236,17 +219,15 @@ void executer_fg(struct cmdline *cmd)
                 {
                     jobs[i].status = ACTIF;
                     kill(jobs[i].pid, SIGCONT);
+                    
                     int codeTerm;
                     waitpid(jobs[i].pid, &codeTerm, 0);
-                    if (WEXITSTATUS(codeTerm) == 0)
-                    {
-                        printf("SUCCESS\n");
+                    
+                    waitpid(jobs[i].pid, &codeTerm, 0);
+                    if (WEXITSTATUS(codeTerm) !=0 ) {
+                        printf("Echec\n");
                     }
-                    else
-                    {
-                        printf("ECHEC\n");
-                    }
-
+                    
                     del_job(jobs[i].pid);
                     trouve = true;
                 }
@@ -280,68 +261,9 @@ void executer_cd(struct cmdline *cmd)
     {
         res = chdir(getenv("HOME"));
     }
-
-    if (res == 0)
+    if (res != 0)
     {
-        printf("SUCCESS\n");
-    }
-    else
-    {
-        printf("ECHEC\n");
-    }
-}
-
-void add_job(int pid, struct cmdline *cmd)
-{
-    jobs = realloc(jobs, sizeof(struct Job) * (nb_jobs + 1));
-    if (jobs)
-    {
-        jobs[nb_jobs].id = nb_jobs;
-        jobs[nb_jobs].pid = pid;
-        jobs[nb_jobs].status = ACTIF;
-        jobs[nb_jobs].cmd = malloc(sizeof(char) * (strlen(cmd->seq[0][0]) + 1));
-        strcpy(jobs[nb_jobs].cmd, cmd->seq[0][0]);
-        nb_jobs++;
-    }
-    else
-    {
-        printf("Erreur realloc add\n");
-        exit(1);
-    }
-}
-
-void del_job(int pid)
-{
-    assert(nb_jobs > 0);
-
-    if (nb_jobs == 1)
-    {
-        free(jobs[0].cmd);
-        free(jobs);
-        jobs = NULL;
-        nb_jobs--;
-    }
-    else
-    {
-        for (int i = 0; i < nb_jobs; i++)
-        {
-            if (jobs[i].pid == pid)
-            {
-                free(jobs[i].cmd);
-                jobs[i] = jobs[nb_jobs - 1];
-                jobs = realloc(jobs, sizeof(struct Job) * (nb_jobs - 1));
-                if (jobs)
-                {
-                    nb_jobs--;
-                }
-                else
-                {
-                    printf("Erreur realloc del\n");
-                    exit(1);
-                }
-                break;
-            }
-        }
+        perror("cd");
     }
 }
 
@@ -351,35 +273,4 @@ void handler_chld(int sig)
     check_jobs();
 }
 
-void check_jobs()
-{
-    int i = 0;
-    while (i < nb_jobs)
-    {
-        int status;
-        pid_t result = waitpid(jobs[i].pid, &status, WNOHANG);
-        if (result == -1)
-        {
-            // Erreur
-            i++;
-        }
-        else if (result == 0)
-        {
-            // Processus n'a pas terminé
-            i++;
-        }
-        else
-        {
-            // Processus terminé
-            if (WIFEXITED(status) || WIFSIGNALED(status))
-            {
-                del_job(jobs[i].pid);
-            }
-            else if (WIFSTOPPED(status))
-            {
-                jobs[i].status = SUSPENDU;
-                i++;
-            }
-        }
-    }
-}
+

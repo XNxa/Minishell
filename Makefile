@@ -9,7 +9,7 @@ CC=gcc
 EXE=minishell
 
 # Quelles options pour le compilateur ? 
-CFLAGS=-Wall -Wextra -D_POSIX_C_SOURCE -std=c99 -g
+CFLAGS=-Wall -Wextra -std=c99 -g
 
 # Options pour l'édition de liens
 LDFLAGS=
