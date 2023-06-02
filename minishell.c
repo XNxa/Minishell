@@ -55,34 +55,9 @@ int main(void)
             {
                 executer_internal_cmd(cmd);
                 continue;
-            } if (cmd->seq[1] != NULL)
-            {
-                executer_pipeline(cmd);
-                continue;
             }
 
-            int fd_in = -1;
-            int fd_out = -1;
-
-            if (cmd->in != NULL)
-            {
-                fd_in = open(cmd->in, O_RDONLY);
-            }
-            if (cmd->out != NULL)
-            {
-                fd_out = open(cmd->out, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-            }
-
-            executer_external_cmd(cmd->seq[0], fd_in, fd_out, cmd->backgrounded);
-            
-            if (fd_in != -1)
-            {
-                close(fd_in);
-            }
-            if (fd_out != -1)
-            {
-                close(fd_out);
-            }
+            executer_pipeline(cmd);
 
         }
 
@@ -95,19 +70,41 @@ void executer_pipeline(struct cmdline *cmd)
 {
     int i = 0;
     int input_fd = STDIN_FILENO;
+    int output_fd = STDOUT_FILENO;
     int pipefd[2];
+    
+    if (cmd->in != NULL)
+    {
+        int fd = open(cmd->in, O_RDONLY);
+        if (fd == -1)
+        {
+            perror("open");
+            return;
+        }
+        input_fd = fd;
+    } 
+    if (cmd->out != NULL)
+    {
+        int fd = open(cmd->out, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        if (fd == -1)
+        {
+            perror("open");
+            return;
+        }
+        output_fd = fd;
+    }
 
     while (cmd->seq[i+1] != NULL) {
         pipe(pipefd); // Créer un tube
 
-        executer_external_cmd(cmd->seq[i], input_fd, pipefd[1], false);
+        executer_external_cmd(cmd->seq[i], input_fd, pipefd[1], cmd->backgrounded);
 
         close(pipefd[1]); // Fermer l'extrémité d'écriture du tube
         input_fd = pipefd[0]; // L'extrémité de lecture devient l'entrée pour la prochaine commande
         i++;
     }
 
-    executer_external_cmd(cmd->seq[i], input_fd, STDOUT_FILENO, false);
+    executer_external_cmd(cmd->seq[i], input_fd, output_fd, cmd->backgrounded);
 }
 
 void executer_external_cmd(char** cmd, int input_fd, int output_fd, bool backgrounded)
